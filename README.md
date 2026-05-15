@@ -218,6 +218,23 @@ python run_all.py --smoke-test
 ```
 Runs: 3 architectures × 2 aug levels × 2 seeds × 2 epochs.
 
+### ✅ Resume after Kaggle session timeout:
+```bash
+# Session 1 ends (GPU timeout at 9h) — some runs completed, some not.
+# Start a new session and just run the same command again:
+python run_all.py
+# The pipeline automatically reads checkpoint.json and skips completed runs.
+```
+Or explicitly:
+```bash
+python run_all.py --resume
+```
+
+### 🔄 Start completely fresh (delete checkpoint):
+```bash
+python run_all.py --reset
+```
+
 ### Custom subset:
 ```bash
 # Only attention and transformer, best aug, 2 seeds

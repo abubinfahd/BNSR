@@ -6,13 +6,19 @@ Usage
 # Full run (all architectures × aug degrees × 3 seeds):
     python run_all.py
 
+# Resume after a Kaggle session timeout (skips completed runs automatically):
+    python run_all.py --resume
+
 # Fast smoke-test (2 seeds, 2 epochs, 2 aug levels, 3 architectures):
     python run_all.py --smoke-test
+
+# Start completely fresh (deletes checkpoint):
+    python run_all.py --reset
 
 Pipeline steps
 --------------
 1.  Load data, split 70/20/10, assign difficulty metadata
-2.  Multi-seed training loop  (all arch × aug × seed combos)
+2.  Multi-seed training loop  (checkpoint-aware, resumes from last run)
 3.  Overall evaluation + per-difficulty evaluation
 4.  Statistical testing (paired t-tests)
 5.  Error analysis (confusion, group errors, similar chars)
@@ -46,6 +52,14 @@ parser.add_argument(
     help="Quick validation: 2 seeds, 2 epochs, 2 aug levels, 3 architectures",
 )
 parser.add_argument(
+    "--resume", action="store_true", default=True,
+    help="Resume from checkpoint (default: True — always resumes if checkpoint exists)",
+)
+parser.add_argument(
+    "--reset", action="store_true",
+    help="Delete checkpoint and start completely fresh",
+)
+parser.add_argument(
     "--archs", nargs="+", default=None,
     help="Subset of architectures to run (e.g. --archs crnn_base attention)",
 )
@@ -60,6 +74,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 # ─── Config overrides for smoke-test ─────────────────────────────────────────
+from checkpoint import load_checkpoint, print_remaining, reset_checkpoint
 from config import (
     SEEDS, ARCHITECTURES, AUG_DEGREES, RESULTS_DIR, FIGURES_DIR,
     INPUT_SHAPE,
@@ -70,6 +85,12 @@ archs       = args.archs       or (["cnn_ctc", "crnn_base", "attention"]
                                    if args.smoke_test else ARCHITECTURES)
 aug_degrees = args.aug_degrees or ([0, 3]          if args.smoke_test else AUG_DEGREES)
 
+# ── Handle --reset ────────────────────────────────────────────────────────────
+if args.reset:
+    reset_checkpoint()
+
+resume = not args.reset   # reset=True → resume=False
+
 print("=" * 65)
 print("  IJDAR Bangla OCR — Modular Pipeline")
 print(f"  TF {tf.__version__}  |  GPU: {len(tf.config.list_physical_devices('GPU')) > 0}")
@@ -77,7 +98,18 @@ print(f"  Architectures : {archs}")
 print(f"  Aug degrees   : {aug_degrees}")
 print(f"  Seeds         : {seeds}")
 print(f"  Smoke-test    : {args.smoke_test}")
+print(f"  Resume mode   : {resume}")
 print("=" * 65)
+
+# ── Show checkpoint status before loading data ─────────────────────────────
+if resume:
+    _ckpt_state = load_checkpoint()
+    print_remaining(_ckpt_state, archs, aug_degrees, seeds)
+    _done_count = len(_ckpt_state.get("completed", []))
+    _total      = len(archs) * len(aug_degrees) * len(seeds)
+    if _done_count >= _total:
+        print("\n  ✅ All training runs already completed in a previous session!")
+        print("  Skipping training — running analysis only …\n")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # STEP 1: Data loading & splitting
@@ -118,6 +150,7 @@ raw_records, summary_df, best_run = run_multi_seed_training(
     aug_degrees   = aug_degrees,
     seeds         = seeds,
     smoke_test    = args.smoke_test,
+    resume        = resume,
 )
 
 # ──────────────────────────────────────────────────────────────────────────────

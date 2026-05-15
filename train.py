@@ -1,16 +1,17 @@
 """
 train.py — Multi-seed training loop for all architectures × aug degrees.
+           Checkpoint-aware: skips already-completed runs on resume.
 
 Outputs
 -------
+outputs/results/checkpoint.json        — live progress (updated after each run)
 outputs/results/raw_seed_results.csv   — one row per (arch, aug, seed)
 outputs/results/multi_seed_summary.csv — mean ± std across seeds per (arch, aug)
-outputs/models/<run_name>_seed<seed>.keras
+outputs/models/<arch>_aug<n>_seed<s>.keras
 """
 
 import os
 import time
-import json
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -19,11 +20,13 @@ from config import (
     SEEDS, AUG_DEGREES, ARCHITECTURES,
     BATCH_SIZE, EPOCHS, RESULTS_DIR, MODELS_DIR,
 )
-from data_utils import (
-    load_split, normalize, augment_rotation, encode_labels, labels_to_strs,
-)
+from data_utils import normalize, augment_rotation, encode_labels
 from models import build_model
 from evaluate import evaluate_overall, ValAccCallback
+from checkpoint import (
+    load_checkpoint, mark_done, is_done,
+    checkpoint_to_records, print_remaining,
+)
 
 
 def set_seeds(seed: int):
@@ -36,14 +39,14 @@ def set_seeds(seed: int):
 def train_one_run(arch: str, n_aug: int, seed: int,
                   train_imgs_raw, train_lbls,
                   val_X, val_Y, test_X, test_Y,
-                  smoke_test: bool = False):
+                  smoke_test: bool = False) -> dict:
     """
     Train a single (arch, aug, seed) configuration.
 
     Returns
     -------
     dict with keys: arch, n_aug, seed, exact, cer, wer,
-                    params, epochs_run, train_time_s, history
+                    params, epochs_run, train_time_s, history, model
     """
     set_seeds(seed)
 
@@ -61,7 +64,7 @@ def train_one_run(arch: str, n_aug: int, seed: int,
     model = build_model(arch)
     n_params = model.count_params()
 
-    run_name = f"{arch}_aug{n_aug}_seed{seed}"
+    run_name  = f"{arch}_aug{n_aug}_seed{seed}"
     ckpt_path = os.path.join(MODELS_DIR, f"{run_name}.keras")
 
     # ── Callbacks ─────────────────────────────────────────────────────────────
@@ -131,9 +134,16 @@ def train_one_run(arch: str, n_aug: int, seed: int,
 def run_multi_seed_training(train_imgs_raw, train_lbls,
                             val_X, val_Y, test_X, test_Y,
                             architectures=None, aug_degrees=None,
-                            seeds=None, smoke_test=False):
+                            seeds=None, smoke_test=False,
+                            resume=True):
     """
-    Full multi-seed training loop.
+    Full multi-seed training loop with checkpoint-based resume support.
+
+    Parameters
+    ----------
+    resume : bool
+        If True (default), load checkpoint.json and skip completed runs.
+        Set to False only if you want a clean restart.
 
     Returns
     -------
@@ -145,47 +155,115 @@ def run_multi_seed_training(train_imgs_raw, train_lbls,
     aug_degrees   = aug_degrees   or AUG_DEGREES
     seeds         = seeds         or SEEDS
 
-    raw_records = []
+    # ── Load checkpoint ───────────────────────────────────────────────────────
+    state = load_checkpoint() if resume else {"completed": []}
+    print_remaining(state, architectures, aug_degrees, seeds)
 
+    # Seed-level run storage (for median-run selection)
+    arch_aug_runs: dict = {}    # (arch, n_aug) → list of run dicts
+    best_run = None
+
+    # ── Restore already-completed records from checkpoint ─────────────────────
+    for rec in checkpoint_to_records(state):
+        key = (rec["arch"], rec["n_aug"])
+        arch_aug_runs.setdefault(key, []).append(rec)
+
+    # ── Main training loop ────────────────────────────────────────────────────
     for n_aug in aug_degrees:
         for arch in architectures:
-            seed_exact, seed_cer, seed_wer = [], [], []
-            seed_runs = []
+            key = (arch, n_aug)
+            arch_aug_runs.setdefault(key, [])
 
             for seed in seeds:
+                # ── SKIP if already done ──────────────────────────────────────
+                if is_done(state, arch, n_aug, seed):
+                    print(f"  [SKIP] arch={arch}  aug={n_aug}  seed={seed}  "
+                          f"(already in checkpoint)")
+                    continue
+
                 print(f"\n── aug={n_aug}  arch={arch}  seed={seed} ──")
+
                 run = train_one_run(
                     arch, n_aug, seed,
                     train_imgs_raw, train_lbls,
                     val_X, val_Y, test_X, test_Y,
                     smoke_test=smoke_test,
                 )
-                raw_records.append({
-                    k: v for k, v in run.items()
-                    if k not in ("gt", "pred", "model", "history")
-                })
-                seed_exact.append(run["exact"])
-                seed_cer.append(run["cer"])
-                seed_wer.append(run["wer"])
-                seed_runs.append(run)
 
-            # Keep the median-seed run for plots / error analysis
-            median_idx = int(np.argsort(seed_exact)[len(seeds) // 2])
-            best_seed_run = seed_runs[median_idx]
-            best_seed_run["seed_exact_all"] = seed_exact
-            best_seed_run["seed_cer_all"]   = seed_cer
+                # ── Save to checkpoint IMMEDIATELY ────────────────────────────
+                mark_done(state, run)
 
-    # ── Save raw results ───────────────────────────────────────────────────────
+                arch_aug_runs[key].append(run)
+
+            # ── Pick median-seed run for plots / error analysis ───────────────
+            seed_runs   = arch_aug_runs.get(key, [])
+            seed_exacts = [r["exact"] for r in seed_runs
+                           if isinstance(r, dict) and "exact" in r
+                           and "model" in r]   # only runs with model object
+            if seed_exacts:
+                median_idx   = int(np.argsort(seed_exacts)[len(seed_exacts) // 2])
+                candidate    = [r for r in seed_runs if "model" in r][median_idx]
+                candidate["seed_exact_all"] = seed_exacts
+                if best_run is None or candidate["exact"] > best_run.get("exact", 0):
+                    best_run = candidate
+
+    # ── Build full raw_records from checkpoint (includes previous sessions) ───
+    all_completed = checkpoint_to_records(state)
+    raw_records   = all_completed   # flat list of serialisable dicts
+
+    # ── Save raw CSV ──────────────────────────────────────────────────────────
     raw_df = pd.DataFrame(raw_records)
     raw_df.to_csv(
         os.path.join(RESULTS_DIR, "raw_seed_results.csv"), index=False
     )
 
-    # ── Aggregate mean ± std ───────────────────────────────────────────────────
+    # ── Aggregate mean ± std ──────────────────────────────────────────────────
+    summary_df = _build_summary(raw_df)
+    summary_df.to_csv(
+        os.path.join(RESULTS_DIR, "multi_seed_summary.csv"), index=False
+    )
+
+    print("\n\nMULTI-SEED SUMMARY (all completed runs):")
+    print(
+        summary_df[["arch", "n_aug", "exact_pm", "cer_pm",
+                    "params", "epochs_run_mean"]]
+        .to_string(index=False)
+    )
+
+    # ── Best config ───────────────────────────────────────────────────────────
+    best_row = summary_df.loc[summary_df["exact_mean"].idxmax()]
+    print(
+        f"\nBest config: arch={best_row['arch']}  "
+        f"aug={best_row['n_aug']}  "
+        f"exact={best_row['exact_pm']}"
+    )
+
+    # Fallback if best_run has no model (e.g. fully resumed from checkpoint)
+    if best_run is None:
+        print(
+            "\n  [checkpoint] All runs were loaded from checkpoint. "
+            "best_run has no live model — re-training best config for analysis …"
+        )
+        best_arch = best_row["arch"]
+        best_aug  = int(best_row["n_aug"])
+        best_seed = seeds[0]
+        best_run  = train_one_run(
+            best_arch, best_aug, best_seed,
+            train_imgs_raw, train_lbls,
+            val_X, val_Y, test_X, test_Y,
+            smoke_test=smoke_test,
+        )
+
+    return raw_records, summary_df, best_run
+
+
+# ─── Summary helper ───────────────────────────────────────────────────────────
+
+def _build_summary(raw_df: pd.DataFrame) -> pd.DataFrame:
     grp = raw_df.groupby(["arch", "n_aug"])
-    summary_rows = []
+    rows = []
     for (arch, n_aug), g in grp:
-        summary_rows.append(dict(
+        rows.append(dict(
             arch              = arch,
             n_aug             = n_aug,
             params            = g["params"].iloc[0],
@@ -199,33 +277,9 @@ def run_multi_seed_training(train_imgs_raw, train_lbls,
             epochs_run_mean   = round(g["epochs_run"].mean(), 1),
             train_time_s_mean = round(g["train_time_s"].mean(), 1),
         ))
-    summary_df = pd.DataFrame(summary_rows)
-    summary_df["exact_pm"] = (
-        summary_df["exact_mean"].map("{:.2f}".format)
-        + " ± "
-        + summary_df["exact_std"].map("{:.2f}".format)
-    )
-    summary_df["cer_pm"] = (
-        summary_df["cer_mean"].map("{:.2f}".format)
-        + " ± "
-        + summary_df["cer_std"].map("{:.2f}".format)
-    )
-    summary_df.to_csv(
-        os.path.join(RESULTS_DIR, "multi_seed_summary.csv"), index=False
-    )
-    print("\n\nMULTI-SEED SUMMARY:")
-    print(
-        summary_df[["arch", "n_aug", "exact_pm", "cer_pm",
-                    "params", "epochs_run_mean"]]
-        .to_string(index=False)
-    )
-
-    # ── Find best overall (arch, aug) by mean exact ────────────────────────────
-    best_row = summary_df.loc[summary_df["exact_mean"].idxmax()]
-    print(
-        f"\nBest config: arch={best_row['arch']}  "
-        f"aug={best_row['n_aug']}  "
-        f"exact={best_row['exact_pm']}"
-    )
-
-    return raw_records, summary_df, best_seed_run
+    df = pd.DataFrame(rows)
+    df["exact_pm"] = (df["exact_mean"].map("{:.2f}".format)
+                      + " ± " + df["exact_std"].map("{:.2f}".format))
+    df["cer_pm"]   = (df["cer_mean"].map("{:.2f}".format)
+                      + " ± " + df["cer_std"].map("{:.2f}".format))
+    return df
