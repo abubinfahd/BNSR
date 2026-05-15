@@ -29,6 +29,34 @@ from checkpoint import (
 )
 
 
+# ─── Multi-GPU strategy (auto-detected) ───────────────────────────────────────
+def _get_strategy():
+    """
+    Automatically detect and return the best distribution strategy.
+
+    - 2+ GPUs (e.g. Kaggle T4 × 2) → MirroredStrategy  (uses both GPUs)
+    - 1 GPU  (e.g. Kaggle P100)     → OneDeviceStrategy  (single GPU)
+    - No GPU                         → default CPU strategy
+    """
+    gpus = tf.config.list_physical_devices('GPU')
+    if len(gpus) >= 2:
+        print(f"  [GPU] {len(gpus)} GPUs detected → using MirroredStrategy")
+        return tf.distribute.MirroredStrategy(), len(gpus)
+    elif len(gpus) == 1:
+        print(f"  [GPU] 1 GPU detected → single-GPU training")
+        return tf.distribute.OneDeviceStrategy('/gpu:0'), 1
+    else:
+        print("  [GPU] No GPU — using CPU")
+        return tf.distribute.get_strategy(), 1
+
+
+STRATEGY, N_GPUS = _get_strategy()
+# Scale batch size linearly with GPU count for efficient multi-GPU utilisation
+EFFECTIVE_BATCH  = BATCH_SIZE * N_GPUS
+print(f"  [GPU] Effective batch size: {EFFECTIVE_BATCH} "
+      f"({BATCH_SIZE} × {N_GPUS} GPUs)")
+
+
 def set_seeds(seed: int):
     """Set all random seeds for reproducibility."""
     np.random.seed(seed)
@@ -60,8 +88,9 @@ def train_one_run(arch: str, n_aug: int, seed: int,
     train_X = normalize(aug_imgs)
     train_Y, _ = encode_labels(aug_lbls)
 
-    # ── Model ─────────────────────────────────────────────────────────────────
-    model = build_model(arch)
+    # ── Model (built inside strategy scope for multi-GPU support) ───────────────
+    with STRATEGY.scope():
+        model = build_model(arch)
     n_params = model.count_params()
 
     run_name  = f"{arch}_aug{n_aug}_seed{seed}"
@@ -93,7 +122,7 @@ def train_one_run(arch: str, n_aug: int, seed: int,
         train_X, train_Y,
         validation_data=(val_X, val_Y),
         epochs=epochs,
-        batch_size=BATCH_SIZE,
+        batch_size=EFFECTIVE_BATCH,   # scaled for multi-GPU
         callbacks=callbacks,
         verbose=0,
     )

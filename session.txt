@@ -1,0 +1,25 @@
+# Session 1 (First time)
+1. Open Kaggle notebook
+2. Add datasets:  bnsr-pipeline  +  bank-serial-number-images
+3. Run all cells
+4. Pipeline trains as many runs as it can in 9 hours
+5. ← GPU TIMEOUT HERE (or you stop it) →
+6. Click "Save Version" → "Save & Run All" → Wait for it to save
+7. Go to your notebook → "Output" tab → Download "checkpoint.json"
+
+# Session 2 (Resume)
+1. Upload checkpoint.json as a NEW Kaggle Dataset:
+   - Go to kaggle.com/datasets → "New Dataset"
+   - Upload checkpoint.json
+   - Name it: "bnsr-checkpoint"
+   - Make it Private → Create
+
+2. Open the SAME Kaggle notebook
+3. Add a 3rd dataset: "bnsr-checkpoint" 
+   (now you have 3 datasets attached)
+4. Run all cells → CELL 1 restores checkpoint
+5. Pipeline prints:
+       ✅ Checkpoint restored — 47 runs already done!
+       [SKIP] arch=cnn_ctc aug=0 seed=42  (already in checkpoint)
+       [SKIP] arch=cnn_ctc aug=0 seed=123 (already in checkpoint)
+       ── aug=3  arch=crnn_large  seed=999 ──  ← resumes here!
