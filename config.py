@@ -9,13 +9,24 @@ import os
 CSV_PATH     = "/kaggle/input/datasets/abubinfahd/bank-serial-number-images/labels.csv"
 IMAGE_FOLDER = "/kaggle/input/datasets/abubinfahd/bank-serial-number-images/cropped_serial_numbers_V3"
 
-OUTPUT_DIR  = "outputs"
-FIGURES_DIR = os.path.join(OUTPUT_DIR, "figures")
-MODELS_DIR  = os.path.join(OUTPUT_DIR, "models")
-RESULTS_DIR = os.path.join(OUTPUT_DIR, "results")
+OUTPUT_DIR       = "outputs"
+FIGURES_DIR      = os.path.join(OUTPUT_DIR, "figures")       # PDF/PNG plots
+MODELS_DIR       = os.path.join(OUTPUT_DIR, "models")        # saved .keras models
+RESULTS_DIR      = os.path.join(OUTPUT_DIR, "results")       # CSV / JSON / LaTeX
+CHECKPOINTS_DIR  = os.path.join(OUTPUT_DIR, "checkpoints")   # Keras training checkpoints
+LOGS_DIR         = os.path.join(OUTPUT_DIR, "logs")          # TensorBoard / training logs
 
-for d in [FIGURES_DIR, MODELS_DIR, RESULTS_DIR]:
-    os.makedirs(d, exist_ok=True)
+_ALL_DIRS = [FIGURES_DIR, MODELS_DIR, RESULTS_DIR, CHECKPOINTS_DIR, LOGS_DIR]
+
+
+def ensure_dirs():
+    """Create all output directories if they don't already exist."""
+    for d in _ALL_DIRS:
+        os.makedirs(d, exist_ok=True)
+
+
+# Create directories on import so every downstream module is safe.
+ensure_dirs()
 
 # ─── Image / Sequence ─────────────────────────────────────────────────────────
 IMG_W, IMG_H     = 128, 64

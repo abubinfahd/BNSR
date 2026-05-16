@@ -24,7 +24,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
-from config import FIGURES_DIR, RESULTS_DIR, ARCHITECTURES
+from config import FIGURES_DIR, RESULTS_DIR, ARCHITECTURES, ensure_dirs
+ensure_dirs()  # guarantee all output folders exist
+
 
 
 # ─── Colour palette ───────────────────────────────────────────────────────────

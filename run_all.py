@@ -77,8 +77,11 @@ args = parser.parse_args()
 from checkpoint import load_checkpoint, print_remaining, reset_checkpoint
 from config import (
     SEEDS, ARCHITECTURES, AUG_DEGREES, RESULTS_DIR, FIGURES_DIR,
-    INPUT_SHAPE,
+    INPUT_SHAPE, CHECKPOINTS_DIR, LOGS_DIR, MODELS_DIR,
+    ensure_dirs,
 )
+ensure_dirs()  # create all output folders before anything else
+
 
 seeds       = args.seeds       or ([42, 123]       if args.smoke_test else SEEDS)
 archs       = args.archs       or (["cnn_ctc", "crnn_base", "attention"]
@@ -335,9 +338,11 @@ _plot_samples(incorrect_idx, "Incorrect Predictions",
 # ── Final summary ─────────────────────────────────────────────────────────────
 print("\n" + "═" * 65)
 print("  ALL OUTPUTS SAVED TO  ./outputs/")
-print("  figures/ — PDF plots ready for IJDAR submission")
-print("  models/  — Keras model checkpoints")
-print("  results/ — CSV tables, JSON metrics, LaTeX table")
+print("  figures/      — PDF plots ready for IJDAR submission")
+print("  models/       — Final .keras models (one per arch×aug×seed)")
+print("  checkpoints/  — Keras best-weight checkpoints (mid-training)")
+print("  results/      — CSV tables, JSON metrics, LaTeX table")
+print("  logs/         — TensorBoard / training logs")
 print("═" * 65)
 print(f"\n  Best model : {best_arch}")
 print(f"  Exact-Match: {best_metrics['exact']:.2f}%")

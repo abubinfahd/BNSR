@@ -13,7 +13,9 @@ import json
 import pandas as pd
 from datetime import datetime
 
-from config import RESULTS_DIR
+from config import RESULTS_DIR, ensure_dirs
+ensure_dirs()  # guarantee all output folders exist
+
 
 CHECKPOINT_PATH = os.path.join(RESULTS_DIR, "checkpoint.json")
 

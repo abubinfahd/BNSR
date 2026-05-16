@@ -20,7 +20,10 @@ import matplotlib.pyplot as plt
 
 from config import (
     RESULTS_DIR, FIGURES_DIR, BATCH_SIZE, MODELS_DIR, INPUT_SHAPE,
+    ensure_dirs,
 )
+ensure_dirs()  # guarantee all output folders exist
+
 
 
 # ─── Inference latency ───────────────────────────────────────────────────────

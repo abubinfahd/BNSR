@@ -18,8 +18,11 @@ import tensorflow as tf
 
 from config import (
     SEEDS, AUG_DEGREES, ARCHITECTURES,
-    BATCH_SIZE, EPOCHS, RESULTS_DIR, MODELS_DIR,
+    BATCH_SIZE, EPOCHS, RESULTS_DIR, MODELS_DIR, CHECKPOINTS_DIR,
+    ensure_dirs,
 )
+ensure_dirs()  # guarantee all output folders exist
+
 from data_utils import normalize, augment_rotation, encode_labels
 from models import build_model
 from evaluate import evaluate_overall, ValAccCallback
@@ -93,8 +96,11 @@ def train_one_run(arch: str, n_aug: int, seed: int,
         model = build_model(arch)
     n_params = model.count_params()
 
-    run_name  = f"{arch}_aug{n_aug}_seed{seed}"
-    ckpt_path = os.path.join(MODELS_DIR, f"{run_name}.keras")
+    run_name   = f"{arch}_aug{n_aug}_seed{seed}"
+    # Mid-training best-weight checkpoint (saved by Keras callback each epoch)
+    ckpt_path  = os.path.join(CHECKPOINTS_DIR, f"{run_name}.keras")
+    # Final saved model location (written explicitly after training is done)
+    model_path = os.path.join(MODELS_DIR,      f"{run_name}.keras")
 
     # ── Callbacks ─────────────────────────────────────────────────────────────
     val_cb = ValAccCallback(val_X, val_Y)
@@ -130,6 +136,10 @@ def train_one_run(arch: str, n_aug: int, seed: int,
 
     # ── Evaluation ────────────────────────────────────────────────────────────
     res = evaluate_overall(model, test_X, test_Y)
+
+    # ── Persist final model to models/ ─────────────────────────────────────
+    model.save(model_path)
+    print(f"  → Model saved: {model_path}")
 
     print(
         f"  [{run_name}]  "

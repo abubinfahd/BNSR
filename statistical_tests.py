@@ -14,7 +14,9 @@ import numpy as np
 import pandas as pd
 from scipy.stats import ttest_rel
 
-from config import RESULTS_DIR, ARCHITECTURES
+from config import RESULTS_DIR, ARCHITECTURES, ensure_dirs
+ensure_dirs()  # guarantee all output folders exist
+
 
 
 def _significance_stars(p: float) -> str:

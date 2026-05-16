@@ -27,7 +27,10 @@ from config import (
     NUM_CLASSES, MAX_LABEL_LENGTH, RESULTS_DIR, FIGURES_DIR,
     char_to_idx, idx_to_char, CHAR_LIST, SIMILAR_GROUPS,
     ENGLISH_DIGITS, BANGLA_DIGITS, BANGLA_LETTERS,
+    ensure_dirs,
 )
+ensure_dirs()  # guarantee all output folders exist
+
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
