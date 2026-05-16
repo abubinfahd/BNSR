@@ -32,6 +32,11 @@ def measure_latency(model: tf.keras.Model,
     """
     Measure mean inference latency in ms/image.
 
+    Uses a compiled tf.function for direct model inference instead of
+    model.predict() to avoid the CuDNN LSTM ``max_seq_length <= 0``
+    error that occurs when predict() distributes the single-sample
+    batch across replica threads and produces a zero-length slice.
+
     Parameters
     ----------
     n_warmup  : warm-up runs (discarded)
@@ -41,15 +46,20 @@ def measure_latency(model: tf.keras.Model,
     -------
     float : ms per image
     """
-    sample = X[:1]           # single image
-    # Warm-up
+    sample = tf.constant(X[:1], dtype=tf.float32)  # shape (1, H, W, C)
+
+    @tf.function
+    def _forward(x):
+        return model(x, training=False)
+
+    # Warm-up — also triggers tracing
     for _ in range(n_warmup):
-        _ = model.predict(sample, batch_size=1, verbose=0)
+        _forward(sample)
 
     times = []
     for _ in range(n_measure):
         t0 = time.perf_counter()
-        model.predict(sample, batch_size=1, verbose=0)
+        _forward(sample)
         times.append((time.perf_counter() - t0) * 1000)
 
     return float(np.mean(times))
