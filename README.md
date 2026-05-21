@@ -345,22 +345,6 @@ result = train_one_run(
 
 ---
 
-## Citation
-
-If you use this pipeline in your research, please cite:
-
-```bibtex
-@article{YourName2026bangla,
-  title   = {A Comparative Study of OCR Architectures for Bangla Bank
-             Document Recognition with Difficulty-Aware Evaluation},
-  author  = {Your Name},
-  journal = {International Journal on Document Analysis and Recognition ()},
-  year    = {2026},
-}
-```
-
----
-
 ## License
 
 MIT — see [LICENSE](LICENSE).
