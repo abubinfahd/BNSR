@@ -1,4 +1,4 @@
-# Bangla Bank Serial-Number OCR — IJDAR Submission Pipeline
+# Bangla Bank Serial-Number OCR 
 
 > **"A controlled comparative study of OCR architectures under structured augmentation
 > and difficulty-aware evaluation for Bangla bank document recognition."**
@@ -26,7 +26,7 @@
 
 ## Overview
 
-This repository implements a **fully modular**, IJDAR-ready OCR pipeline for
+This repository implements a **fully modular**, ready OCR pipeline for
 recognising serial numbers on Bangla bank documents. It goes well beyond a
 single-model baseline by providing:
 
@@ -114,7 +114,7 @@ Input → CNN backbone (same as above)
 
 ---
 
-### (D) Attention OCR ⭐ (IJDAR Requirement)
+### (D) Attention OCR ⭐ (Requirement)
 ```
 Input → CNN backbone
   └─ Collapse H
@@ -130,7 +130,7 @@ Bahdanau additive attention:
 
 ---
 
-### (E) Transformer OCR ⭐ (IJDAR Requirement)
+### (E) Transformer OCR ⭐ (Requirement)
 ```
 Input → Conv2D(stride=2) → Conv2D(stride=2)   ← patch embedding
   └─ Collapse H → (B, W/4, d_model) tokens
@@ -354,7 +354,7 @@ If you use this pipeline in your research, please cite:
   title   = {A Comparative Study of OCR Architectures for Bangla Bank
              Document Recognition with Difficulty-Aware Evaluation},
   author  = {Your Name},
-  journal = {International Journal on Document Analysis and Recognition (IJDAR)},
+  journal = {International Journal on Document Analysis and Recognition ()},
   year    = {2026},
 }
 ```
